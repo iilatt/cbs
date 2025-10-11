@@ -135,6 +135,13 @@ struct Config {
 		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("lib"))) {
 			assert_value_count(current_values.len, 0);
 			self.libraries.join(current_values);
+		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("dbg_lib"))) {
+			assert_value_count(current_values.len, 2);
+			if (self.mode == Mode::Debug) {
+				self.libraries.push(current_values[1]);
+			} else {
+				self.libraries.push(current_values[0]);
+			}
 		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("out"))) {
 			if (self.out_path.buf != nullptr) {
 				panic("Key 'out' already set");
@@ -172,7 +179,12 @@ struct Config {
 	}
 
 	void build_module(this auto& self, ctk::ar<u8> module_name) {
-		ctk::ar<u8> gcc_command = ctk::alloc_format("%.*s\\g++.exe -std=c++23 -Wall -c include\\%.*s\\main.cpp -o temp\\%.*s.o %s", self.gcc_path.len, (const char*)self.gcc_path.buf, module_name.len, (const char*)module_name.buf, module_name.len, (const char*)module_name.buf, self.mode == Mode::Debug ? "-O0 -g": "-O3 -s");
+		ctk::ar<u8> out_path = ctk::alloc_format("temp\\%.*s.o", module_name.len, (const char*)module_name.buf);
+		if (ctk::File::exists((const char*)out_path.buf)) {
+			return;
+		}
+		ctk::ar<u8> gcc_command = ctk::alloc_format("%.*s\\g++.exe -std=c++23 -Wall -c include\\%.*s\\main.cpp -o %s %s", self.gcc_path.len, (const char*)self.gcc_path.buf, module_name.len, (const char*)module_name.buf, (const char*)out_path.buf, self.mode == Mode::Debug ? "-DCBS_DEBUG -O0 -g": "-O3 -s");
+		std::printf("Building module %.*s\n", (int)module_name.len, (const char*)module_name.buf);
 		if (::system((const char*)gcc_command.buf)) {
 			panic("GCC error");
 		}
@@ -208,9 +220,10 @@ struct Config {
 			libraries_str.join(self.libraries[a]);
 			libraries_str.push((u8)' ');
 		}
-		ctk::ar<u8> gcc_command = ctk::alloc_format("%.*s\\g++.exe -std=c++23 -static -Wall src\\main.cpp -o %.*s -Iinclude -Itemp -Llib %.*s %.*s %s", self.gcc_path.len, (const char*)self.gcc_path.buf, self.out_path.len, (const char*)self.out_path.buf, modules_str.len, (const char*)modules_str.buf, libraries_str.len, (const char*)libraries_str.buf, self.mode == Mode::Debug ? "-O0 -g -mconsole": "-O3 -s -mwindows");
+		ctk::ar<u8> gcc_command = ctk::alloc_format("%.*s\\g++.exe -std=c++23 -static -Wall src\\main.cpp -o %.*s -Iinclude -Itemp -Llib %.*s %.*s %s", self.gcc_path.len, (const char*)self.gcc_path.buf, self.out_path.len, (const char*)self.out_path.buf, modules_str.len, (const char*)modules_str.buf, libraries_str.len, (const char*)libraries_str.buf, self.mode == Mode::Debug ? "-DCBS_DEBUG -O0 -g -mconsole": "-O3 -s -mwindows");
 		modules_str.destroy();
 		libraries_str.destroy();
+		std::printf("Building main\n");
 		if (::system((const char*)gcc_command.buf)) {
 			panic("GCC error");
 		}
@@ -218,7 +231,7 @@ struct Config {
 		f64 end_time = self.time.get();
 		std::printf("Build finished (took %.2fs)\n", end_time - self.start_time);
 		if (self.mode == Mode::Debug) {
-			ctk::ar<u8> gdb_command = ctk::alloc_format("start %.*s\\gdb -ex \"set pagination off\" -ex \"break debug.cpp:27\" -ex \"run\" %.*s", self.gcc_path.len, (const char*)self.gcc_path.buf, self.out_path.len, (const char*)self.out_path.buf);
+			ctk::ar<u8> gdb_command = ctk::alloc_format("start %.*s\\gdb -ex \"set pagination off\" -ex \"run\" %.*s", self.gcc_path.len, (const char*)self.gcc_path.buf, self.out_path.len, (const char*)self.out_path.buf);
 			::system((const char*)gdb_command.buf);
 			gdb_command.destroy();
 		} else if (self.mode == Mode::Run) {
