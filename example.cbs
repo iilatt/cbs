@@ -1,3 +1,5 @@
+gcc | mingw64\bin
+fxc | build
 d3d | data_raw/shader1.hlsl, data/shader1
 d3d | data_raw/shader2.hlsl, data/shader2
 adb | data, out/blob, src/adb.cpp

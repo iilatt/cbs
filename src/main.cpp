@@ -3,8 +3,7 @@ void panic(const char* format, ...);
 // #define CTK_ARR_CHECK
 // #define CTK_MEM_CHECK
 #define CTK_PANIC panic
-#include <ctk-0.33/main.cpp>
-#include <dxc/dxcapi.h>
+#include <ctk-0.34/main.cpp>
 
 enum class Mode {
 	Build,
