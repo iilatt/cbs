@@ -6,6 +6,7 @@ struct Config {
 	ctk::ar<u8> res_path;
 	ctk::gar<ctk::ar<u8>> modules;
 	ctk::gar<ctk::ar<u8>> libraries;
+	ctk::gar<ctk::ar<u8>> includes;
 	ctk::ar<u8> out_path;
 	Mode mode;
 	
@@ -27,6 +28,7 @@ struct Config {
 		self.res_path = ctk::ar<u8>::empty();
 		self.modules.create_auto();
 		self.libraries.create_auto();
+		self.includes.create_auto();
 		self.out_path = ctk::ar<u8>::empty();
 		self.mode = mode;
 		ctk::ar<u8> file_data = ctk::load_file(file_path);
@@ -96,6 +98,10 @@ struct Config {
 			self.libraries[a].destroy();
 		}
 		self.libraries.destroy();
+		for (size_t a = 0; a < self.includes.len; ++a) {
+			self.includes[a].destroy();
+		}
+		self.includes.destroy();
 		self.out_path.destroy();
 	}
 
@@ -114,7 +120,23 @@ struct Config {
 			self.fxc_path = current_values[0];
 		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("d3d"))) {
 			assert_value_count(current_values.len, 2);
-			self.build_shader(current_values[0], current_values[1]);
+			self.build_shader("vs", current_values[0], current_values[1]);
+			self.build_shader("ps", current_values[0], current_values[1]);
+			current_values[0].destroy();
+			current_values[1].destroy();
+		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("d3d_vs"))) {
+			assert_value_count(current_values.len, 2);
+			self.build_shader("vs", current_values[0], current_values[1]);
+			current_values[0].destroy();
+			current_values[1].destroy();
+		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("d3d_ps"))) {
+			assert_value_count(current_values.len, 2);
+			self.build_shader("ps", current_values[0], current_values[1]);
+			current_values[0].destroy();
+			current_values[1].destroy();
+		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("d3d_cs"))) {
+			assert_value_count(current_values.len, 2);
+			self.build_shader("cs", current_values[0], current_values[1]);
 			current_values[0].destroy();
 			current_values[1].destroy();
 		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("adb"))) {
@@ -142,6 +164,9 @@ struct Config {
 			} else {
 				self.libraries.push(current_values[0]);
 			}
+		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("inc"))) {
+			assert_value_count(current_values.len, 0);
+			self.includes.join(current_values);
 		} else if (ctk::ar<const u8>::compare(current_key, AR_STR("out"))) {
 			if (self.out_path.buf != nullptr) {
 				panic("Key 'out' already set");
@@ -160,30 +185,27 @@ struct Config {
 		self.build_main();
 	}
 
-	void build_shader(this auto& self, ctk::ar<u8> shader_path, ctk::ar<u8> out_path) {
+	void build_shader(this auto& self, const char* type, ctk::ar<const u8> shader_path, ctk::ar<const u8> out_path) {
+		ctk::ar<u8> full_out_path = ctk::alloc_format("%.*s.%s", out_path.len, (const char*)out_path.buf, type);
+		if (ctk::File::exists((const char*)full_out_path.buf)) {
+			return;
+		}
 		if (self.fxc_path.buf == nullptr) {
 			panic("Missing 'fxc' key");
 		}
-
-		ctk::ar<u8> fxc_vs_command = ctk::alloc_format("%.*s\\fxc.exe /nologo /O3 /T vs_4_0 /E vs_main /Fo %.*s.vs %.*s.hlsl", self.fxc_path.len, (const char*)self.fxc_path.buf, out_path.len, (const char*)out_path.buf, shader_path.len, (const char*)shader_path.buf);
+		ctk::ar<u8> fxc_vs_command = ctk::alloc_format("%.*s\\fxc.exe /nologo /O3 /T %s_5_0 /E %s_main /Fo %.*s %.*s.hlsl", self.fxc_path.len, (const char*)self.fxc_path.buf, type, type, full_out_path.len, (const char*)full_out_path.buf, shader_path.len, (const char*)shader_path.buf);
 		if (::system((const char*)fxc_vs_command.buf)) {
 			panic("fxc error");
 		}
 		fxc_vs_command.destroy();
-
-		ctk::ar<u8> fxc_ps_command = ctk::alloc_format("%.*s\\fxc.exe /nologo /O3 /T ps_4_0 /E ps_main /Fo %.*s.ps %.*s.hlsl", self.fxc_path.len, (const char*)self.fxc_path.buf, out_path.len, (const char*)out_path.buf, shader_path.len, (const char*)shader_path.buf);
-		if (::system((const char*)fxc_ps_command.buf)) {
-			panic("fxc error");
-		}
-		fxc_ps_command.destroy();
 	}
 
-	void build_module(this auto& self, ctk::ar<u8> module_name) {
-		ctk::ar<u8> out_path = ctk::alloc_format("temp\\%.*s.o", module_name.len, (const char*)module_name.buf);
+	void build_module(this auto& self, ctk::ar<const u8> module_name) {
+		ctk::ar<u8> out_path = ctk::alloc_format("temp\\%.*s_%s.o", module_name.len, (const char*)module_name.buf, self.mode == Mode::Debug ? "dbg": "rls");
 		if (ctk::File::exists((const char*)out_path.buf)) {
 			return;
 		}
-		ctk::ar<u8> gcc_command = ctk::alloc_format("%.*s\\g++.exe -std=c++23 -Wall -c include\\%.*s\\main.cpp -o %s %s", self.gcc_path.len, (const char*)self.gcc_path.buf, module_name.len, (const char*)module_name.buf, (const char*)out_path.buf, self.mode == Mode::Debug ? "-DCBS_DEBUG -O0 -g": "-O3 -s");
+		ctk::ar<u8> gcc_command = ctk::alloc_format("%.*s\\g++.exe -fuse-ld=lld -std=c++23 -Wall -Wextra -Wno-unused-parameter -c include\\%.*s\\mod.cpp -o %s -Iinclude %s -DCBS_MOD -DCBS_WIN32 -DWINVER=_WIN32_WINNT_WIN10", self.gcc_path.len, (const char*)self.gcc_path.buf, module_name.len, (const char*)module_name.buf, (const char*)out_path.buf, self.mode == Mode::Debug ? "-DCBS_DEBUG -Og -g": "-O3 -s");
 		std::printf("Building module %.*s\n", (int)module_name.len, (const char*)module_name.buf);
 		if (::system((const char*)gcc_command.buf)) {
 			panic("GCC error");
@@ -203,14 +225,17 @@ struct Config {
 		for (size_t a = 0; a < self.modules.len; ++a) {
 			modules_str.join(AR_STR("temp\\"));
 			modules_str.join(self.modules[a]);
+			modules_str.join(self.mode == Mode::Debug ? AR_STR("_dbg") : AR_STR("_rls"));
 			modules_str.join(AR_STR(".o "));
 		}
 		if (self.res_path.buf != nullptr) {
-			ctk::ar<u8> windres_command = ctk::alloc_format("%.*s\\windres.exe -i %.*s -o temp\\res.o", self.gcc_path.len, (const char*)self.gcc_path.buf, self.res_path.len, (const char*)self.res_path.buf);
-			if (::system((const char*)windres_command.buf)) {
-				panic("Windres error");
+			if (ctk::File::exists("temp\\res.o") == false) {
+				ctk::ar<u8> windres_command = ctk::alloc_format("%.*s\\windres.exe -i %.*s -o temp\\res.o", self.gcc_path.len, (const char*)self.gcc_path.buf, self.res_path.len, (const char*)self.res_path.buf);
+				if (::system((const char*)windres_command.buf)) {
+					panic("Windres error");
+				}
+				windres_command.destroy();
 			}
-			windres_command.destroy();
 			modules_str.join(AR_STR("temp\\res.o"));
 		}
 		ctk::gar<u8> libraries_str;
@@ -220,9 +245,17 @@ struct Config {
 			libraries_str.join(self.libraries[a]);
 			libraries_str.push((u8)' ');
 		}
-		ctk::ar<u8> gcc_command = ctk::alloc_format("%.*s\\g++.exe -std=c++23 -static -Wall src\\main.cpp -o %.*s -Iinclude -Itemp -Llib %.*s %.*s %s", self.gcc_path.len, (const char*)self.gcc_path.buf, self.out_path.len, (const char*)self.out_path.buf, modules_str.len, (const char*)modules_str.buf, libraries_str.len, (const char*)libraries_str.buf, self.mode == Mode::Debug ? "-DCBS_DEBUG -O0 -g -mconsole": "-O3 -s -mwindows");
+		ctk::gar<u8> includes_str;
+		includes_str.create_auto();
+		for (size_t a = 0; a < self.includes.len; ++a) {
+			includes_str.join(AR_STR("-I"));
+			includes_str.join(self.includes[a]);
+			includes_str.push((u8)' ');
+		}
+		ctk::ar<u8> gcc_command = ctk::alloc_format("%.*s\\g++.exe -fuse-ld=lld -std=c++23 -static -Wall -Wextra -Wno-unused-parameter src\\main.cpp -o %.*s -Itemp -Llib -DCBS_WIN32 -DWINVER=_WIN32_WINNT_WIN10 %.*s %.*s %.*s %s", self.gcc_path.len, (const char*)self.gcc_path.buf, self.out_path.len, (const char*)self.out_path.buf, modules_str.len, (const char*)modules_str.buf, libraries_str.len, (const char*)libraries_str.buf, includes_str.len, (const char*)includes_str.buf, self.mode == Mode::Debug ? "-DCBS_DEBUG -Og -g -mconsole": "-O3 -s -mwindows");
 		modules_str.destroy();
 		libraries_str.destroy();
+		includes_str.destroy();
 		std::printf("Building main\n");
 		if (::system((const char*)gcc_command.buf)) {
 			panic("GCC error");

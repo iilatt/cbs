@@ -8,4 +8,5 @@ mod | ctk-0.1
 mod | atk-0.2
 lib | freetype, bz2, harfbuzz, rpcrt4, png, brotlidec, brotlicommon, graphite2, z, gdi32
 lib | winrt_helper, discord_partner_sdk, steam_api64, ws2_32, d3d11, d3dcompiler, dwmapi, winmm, ole32, shlwapi, dcomp, uuid, comdlg32, dbghelp, bcrypt
+inc | skia/include
 out | out/test
