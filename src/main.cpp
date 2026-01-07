@@ -1,9 +1,5 @@
-void panic(const char* format, ...);
-
-// #define CTK_ARR_CHECK
 // #define CTK_MEM_CHECK
-#define CTK_PANIC panic
-#include <ctk-0.35/main.cpp>
+#include <ctk-0.45/mod.cpp>
 
 enum class Mode {
 	Build,
@@ -14,18 +10,9 @@ enum class Mode {
 #include "adbp.cpp"
 #include "config.cpp"
 
-void panic(const char* format, ...) {
-	va_list args;
-	va_start(args, format);
-	std::vfprintf(stderr, format, args);
-	va_end(args);
-	std::putchar('\n');
-	std::exit(1);
-}
-
 int main(int argc, char** argv) {
 	if (argc != 3) {
-		panic("Need 2 arguments [config_path, 'build'/'run'/'debug']");
+		ctk::panic("Need 2 arguments [config_path, 'build'/'run'/'debug']");
 	}
 	const char* config_file_path = argv[1];
 	ctk::ar<const u8> mode_str = AR_STR(argv[2]);
@@ -37,7 +24,12 @@ int main(int argc, char** argv) {
 	} else if (ctk::ar<const u8>::compare(mode_str, AR_STR("d")) || ctk::ar<const u8>::compare(mode_str, AR_STR("debug"))) {
 		mode = Mode::Debug;
 	} else {
-		panic("Invalid mode");
+		ctk::panic("Invalid mode");
+	}
+	if (ctk::File::exists("temp") == false) {
+		if (ctk::File::create_dir("temp") == ctk::File::CreateResult::Error) {
+			ctk::panic("ctk::File::create_dir failed");
+		}
 	}
 	Config config;
 	config.create(config_file_path, mode);
